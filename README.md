@@ -13,27 +13,27 @@ Right now it focuses on `show` (read-only) commands only.
 ## Build
 
 ```sh
-make -C linux-mpsutil
+make
 ```
 
 This produces:
-- `linux-mpsutil/mpsutil`
-- `linux-mpsutil/mprutil` (symlink to `mpsutil`, argv[0] controls which device is used)
+- `mpsutil`
+- `mprutil` (symlink to `mpsutil`, argv[0] controls which device is used)
 
 ## Usage
 
 Examples:
 
 ```sh
-sudo ./linux-mpsutil/mpsutil show adapters
-sudo ./linux-mpsutil/mpsutil -u 0 show adapter
-sudo ./linux-mpsutil/mpsutil -u 0 show devices
+sudo ./mpsutil show adapters
+sudo ./mpsutil -u 0 show adapter
+sudo ./mpsutil -u 0 show devices
 
-sudo ./linux-mpsutil/mprutil show adapters
-sudo ./linux-mpsutil/mprutil -u 0 show iocfacts
+sudo ./mprutil show adapters
+sudo ./mprutil -u 0 show iocfacts
 
 # Dump raw config page bytes (page [num] [addr])
-sudo ./linux-mpsutil/mpsutil -u 0 show cfgpage 0x09 0
+sudo ./mpsutil -u 0 show cfgpage 0x09 0
 ```
 
 Notes:

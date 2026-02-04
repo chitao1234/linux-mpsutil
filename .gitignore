@@ -1,0 +1,39 @@
+# Build outputs (built in-tree by the Makefile)
+/mpsutil
+/mprutil
+
+# Object files / libraries
+*.o
+*.a
+*.so
+*.so.*
+*.dylib
+*.d
+
+# Debug / profiling / coverage
+core
+core.*
+vgcore.*
+gmon.out
+*.gcno
+*.gcda
+*.gcov
+
+# Tooling
+compile_commands.json
+tags
+TAGS
+cscope.out
+.cache/
+.clangd/
+
+# Editors
+*~
+*.swp
+*.swo
+*.swx
+.#*
+.DS_Store
+.idea/
+.vscode/
+

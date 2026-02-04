@@ -63,6 +63,52 @@ ioc_status_str(uint16_t ioc_status_le)
 	return buf;
 }
 
+#define MPT_PCHAR(_c) \
+	do { \
+		if (retval + 1 < outbuf_sz) { \
+			outbuf[retval] = (_c); \
+			retval++; \
+		} \
+	} while (0)
+
+size_t
+mpt_parse_flags(uintmax_t num, const char *q, char *outbuf, size_t outbuf_sz)
+{
+	const unsigned char *p = (const unsigned char *)q;
+	size_t retval = 0;
+	size_t base;
+
+	if (!outbuf || outbuf_sz == 0)
+		return 0;
+
+	outbuf[0] = '\0';
+	if (!q || num == 0)
+		return 0;
+
+	/* FreeBSD-style %b conversion flag format. */
+	base = retval;
+	while (*p) {
+		unsigned int bit = *p++;
+
+		if (bit > 0 && bit <= (sizeof(num) * 8) &&
+		    (num & ((uintmax_t)1 << (bit - 1)))) {
+			MPT_PCHAR(retval != base ? ',' : '<');
+			while (*p > ' ') {
+				MPT_PCHAR((char)*p);
+				p++;
+			}
+		} else {
+			while (*p > ' ')
+				p++;
+		}
+	}
+	if (retval != base)
+		MPT_PCHAR('>');
+
+	outbuf[retval < outbuf_sz ? retval : (outbuf_sz - 1)] = '\0';
+	return retval;
+}
+
 void
 hexdump(const void *ptr, size_t len, const char *prefix)
 {
@@ -158,4 +204,3 @@ mpt_parse_u32(const char *s, uint32_t *out)
 	*out = (uint32_t)v;
 	return 0;
 }
-

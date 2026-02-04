@@ -11,6 +11,34 @@
 
 #define MPT_MAX_UNIT 32
 
+/*
+ * FreeBSD-style bit descriptions for %b-like decoding.
+ * These strings intentionally use 1-based bit numbers (as octal escapes).
+ */
+static const char mpt_ioc_cap_bits[] =
+	"\3ScsiTaskFull"
+	"\4DiagTrace"
+	"\5SnapBuf"
+	"\6ExtBuf"
+	"\7EEDP"
+	"\10BiDirTarg"
+	"\11Multicast"
+	"\14TransRetry"
+	"\15IR"
+	"\16EventReplay"
+	"\17RaidAccel"
+	"\20MSIXIndex"
+	"\21HostDisc"
+	"\22FastPath"
+	"\23RDPQArray"
+	"\24AtomicReqDesc"
+	"\25PCIeSRIOV";
+
+static const char mpt_proto_flag_bits[] =
+	"\4NvmeDevices"
+	"\1ScsiTarget"
+	"\2ScsiInitiator";
+
 static const char *
 dev_prefix(void)
 {
@@ -102,7 +130,16 @@ show_iocfacts(int fd, int unit)
 	uint16_t ioc_status = le16toh(facts->IOCStatus);
 	uint32_t ioc_loginfo = le32toh(facts->IOCLogInfo);
 	uint32_t ioc_caps = le32toh(facts->IOCCapabilities);
+	char capbuf[128];
 	uint32_t fw = le32toh(facts->FWVersion.Word);
+	uint16_t proto = le16toh(facts->ProtocolFlags);
+	char protbuf[64];
+
+	memset(capbuf, 0, sizeof(capbuf));
+	(void)mpt_parse_flags(ioc_caps, mpt_ioc_cap_bits, capbuf, sizeof(capbuf));
+
+	memset(protbuf, 0, sizeof(protbuf));
+	(void)mpt_parse_flags(proto, mpt_proto_flag_bits, protbuf, sizeof(protbuf));
 
 	printf("          MsgVersion: %u.%u\n", msgver >> 8, msgver & 0xff);
 	printf("           MsgLength: %u\n", facts->MsgLength);
@@ -122,7 +159,7 @@ show_iocfacts(int fd, int unit)
 	printf("      MaxMSIxVectors: %u\n", facts->MaxMSIxVectors);
 	printf("       RequestCredit: %u\n", le16toh(facts->RequestCredit));
 	printf("           ProductID: 0x%x\n", le16toh(facts->ProductID));
-	printf("     IOCCapabilities: 0x%08x\n", ioc_caps);
+	printf("     IOCCapabilities: 0x%x %s\n", ioc_caps, capbuf);
 	printf("           FWVersion: %u.%02u.%02u.%02u\n",
 	    (fw >> 24) & 0xff, (fw >> 16) & 0xff, (fw >> 8) & 0xff, fw & 0xff);
 	printf(" IOCRequestFrameSize: %u\n", le16toh(facts->IOCRequestFrameSize));
@@ -130,7 +167,7 @@ show_iocfacts(int fd, int unit)
 	printf("          MaxTargets: %u\n", le16toh(facts->MaxTargets));
 	printf("     MaxSasExpanders: %u\n", le16toh(facts->MaxSasExpanders));
 	printf("       MaxEnclosures: %u\n", le16toh(facts->MaxEnclosures));
-	printf("       ProtocolFlags: 0x%x\n", le16toh(facts->ProtocolFlags));
+	printf("       ProtocolFlags: 0x%x %s\n", proto, protbuf);
 	printf("  HighPriorityCredit: %u\n", le16toh(facts->HighPriorityCredit));
 	printf("MaxRepDescPostQDepth: %u\n",
 	    le16toh(facts->MaxReplyDescriptorPostQueueDepth));

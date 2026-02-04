@@ -28,6 +28,7 @@ extern struct mpt_ctx g_ctx;
 /* Utility helpers */
 void hexdump(const void *ptr, size_t len, const char *prefix);
 const char *ioc_status_str(uint16_t ioc_status_le);
+size_t mpt_parse_flags(uintmax_t num, const char *q, char *outbuf, size_t outbuf_sz);
 int mpt_parse_unit(const char *s, int *out_unit);
 int mpt_parse_u8(const char *s, uint8_t *out);
 int mpt_parse_u32(const char *s, uint32_t *out);
@@ -77,4 +78,3 @@ MPI2_IOC_FACTS_REPLY *mpt_get_ioc_facts(int fd, int unit);
 int cmd_show(int argc, char **argv);
 
 #endif /* LINUX_MPSUTIL_MPTUTIL_H */
-

@@ -3,7 +3,10 @@
 
 #include <ctype.h>
 #include <endian.h>
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 static const char *ioc_status_codes[] = {
 	"Success", /* 0x0000 */
@@ -88,5 +91,71 @@ hexdump(const void *ptr, size_t len, const char *prefix)
 		}
 		printf("|\n");
 	}
+}
+
+int
+mpt_parse_unit(const char *s, int *out_unit)
+{
+	char *end = NULL;
+	long v;
+
+	if (!s || !out_unit) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	errno = 0;
+	v = strtol(s, &end, 0);
+	if (errno != 0 || end == s || !end || *end != '\0' || v < 0 || v > INT_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	*out_unit = (int)v;
+	return 0;
+}
+
+int
+mpt_parse_u8(const char *s, uint8_t *out)
+{
+	char *end = NULL;
+	unsigned long v;
+
+	if (!s || !out) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	errno = 0;
+	v = strtoul(s, &end, 0);
+	if (errno != 0 || end == s || !end || *end != '\0' || v > UINT8_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	*out = (uint8_t)v;
+	return 0;
+}
+
+int
+mpt_parse_u32(const char *s, uint32_t *out)
+{
+	char *end = NULL;
+	unsigned long v;
+
+	if (!s || !out) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	errno = 0;
+	v = strtoul(s, &end, 0);
+	if (errno != 0 || end == s || !end || *end != '\0' || v > UINT32_MAX) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	*out = (uint32_t)v;
+	return 0;
 }
 

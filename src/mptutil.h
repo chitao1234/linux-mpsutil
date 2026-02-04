@@ -28,6 +28,9 @@ extern struct mpt_ctx g_ctx;
 /* Utility helpers */
 void hexdump(const void *ptr, size_t len, const char *prefix);
 const char *ioc_status_str(uint16_t ioc_status_le);
+int mpt_parse_unit(const char *s, int *out_unit);
+int mpt_parse_u8(const char *s, uint8_t *out);
+int mpt_parse_u32(const char *s, uint32_t *out);
 
 /* Device access */
 int mpt_open(const struct mpt_ctx *ctx);

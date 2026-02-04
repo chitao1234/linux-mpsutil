@@ -34,6 +34,10 @@ usage(const char *argv0)
 	    p, p, p, p, p);
 }
 
+#define MPT_EXIT_OK 0
+#define MPT_EXIT_ERROR 1
+#define MPT_EXIT_USAGE 2
+
 static int
 cmd_version(void)
 {
@@ -75,10 +79,10 @@ main(int argc, char **argv)
 	while ((ch = getopt(argc, argv, "u:d:h")) != -1) {
 		switch (ch) {
 		case 'u':
-			g_ctx.unit = (int)strtol(optarg, NULL, 0);
-			if (g_ctx.unit < 0) {
+			if (mpt_parse_unit(optarg, &g_ctx.unit) < 0) {
 				fprintf(stderr, "Invalid unit: %s\n", optarg);
-				return 1;
+				usage(argv0);
+				return MPT_EXIT_USAGE;
 			}
 			break;
 		case 'd':
@@ -90,9 +94,11 @@ main(int argc, char **argv)
 				g_ctx.is_mpt2 = false;
 			break;
 		case 'h':
+			usage(argv0);
+			return MPT_EXIT_OK;
 		default:
 			usage(argv[0]);
-			return 1;
+			return MPT_EXIT_USAGE;
 		}
 	}
 
@@ -101,7 +107,7 @@ main(int argc, char **argv)
 
 	if (argc == 0) {
 		usage(argv0);
-		return 1;
+		return MPT_EXIT_USAGE;
 	}
 
 	if (strcmp(argv[0], "version") == 0)
@@ -112,5 +118,5 @@ main(int argc, char **argv)
 
 	fprintf(stderr, "Unknown command: %s\n", argv[0]);
 	usage(argv0);
-	return 1;
+	return MPT_EXIT_USAGE;
 }

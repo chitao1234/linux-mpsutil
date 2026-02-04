@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-or-later */
 #include "mptutil.h"
 
+#include <stddef.h>
 #include <endian.h>
 #include <errno.h>
 #include <stdio.h>
@@ -535,12 +536,23 @@ show_cfgpage(int fd, int unit, int argc, char **argv)
 		fprintf(stderr, "show cfgpage: missing page\n");
 		return EINVAL;
 	}
+	if (argc > 4) {
+		fprintf(stderr, "show cfgpage: too many arguments\n");
+		return EINVAL;
+	}
 
-	page = (uint8_t)strtoul(argv[1], NULL, 0);
-	if (argc >= 3)
-		num = (uint8_t)strtoul(argv[2], NULL, 0);
-	if (argc >= 4)
-		addr = (uint32_t)strtoul(argv[3], NULL, 0);
+	if (mpt_parse_u8(argv[1], &page) < 0) {
+		fprintf(stderr, "show cfgpage: invalid page: %s\n", argv[1]);
+		return EINVAL;
+	}
+	if (argc >= 3 && mpt_parse_u8(argv[2], &num) < 0) {
+		fprintf(stderr, "show cfgpage: invalid num: %s\n", argv[2]);
+		return EINVAL;
+	}
+	if (argc >= 4 && mpt_parse_u32(argv[3], &addr) < 0) {
+		fprintf(stderr, "show cfgpage: invalid addr: %s\n", argv[3]);
+		return EINVAL;
+	}
 
 	void *data = NULL;
 	size_t len = 0;
@@ -600,13 +612,13 @@ cmd_show(int argc, char **argv)
 {
 	if (argc < 2) {
 		show_usage();
-		return EINVAL;
+		return 2;
 	}
 
 	int fd = mpt_open(&g_ctx);
 	if (fd < 0) {
 		perror("open ioctl device");
-		return errno;
+		return 1;
 	}
 
 	const char *sub = argv[1];
@@ -635,5 +647,9 @@ cmd_show(int argc, char **argv)
 	}
 
 	close(fd);
-	return rc;
+	if (rc == 0)
+		return 0;
+	if (rc == EINVAL)
+		return 2;
+	return 1;
 }

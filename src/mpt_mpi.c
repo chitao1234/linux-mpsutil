@@ -10,6 +10,10 @@
 
 struct mpt_ctx g_ctx;
 
+#define MPT_MAX_DATA_SGE_OFFSET_DWORDS 1024u /* 4KiB request-frame prefix */
+#define MPT_MAX_CONFIG_PAGE_BYTES (256u * 1024u)
+#define MPT_MAX_IOC_FACTS_BYTES 4096u
+
 int
 mpt_open(const struct mpt_ctx *ctx)
 {
@@ -67,14 +71,46 @@ mpt_send_mpi(int fd,
 	size_t data_out_len,
 	unsigned timeout_sec)
 {
-	size_t mf_len = (size_t)data_sge_offset_dwords * 4;
+	size_t mf_len;
 	size_t cmd_len;
 	struct mpt3_ioctl_command *cmd;
 	int rc;
 
 	/* Kernel expects a reasonable SGE offset; enforce a minimum. */
-	if (data_sge_offset_dwords == 0) {
+	if (data_sge_offset_dwords == 0 ||
+	    data_sge_offset_dwords > MPT_MAX_DATA_SGE_OFFSET_DWORDS) {
 		errno = EINVAL;
+		return -1;
+	}
+
+	mf_len = (size_t)data_sge_offset_dwords * 4;
+
+	if (req_bytes_len && !req_bytes) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (req_bytes_len > mf_len) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (reply_bytes_len && !reply_bytes) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (data_in_len && !data_in) {
+		errno = EINVAL;
+		return -1;
+	}
+	if (data_out_len && !data_out) {
+		errno = EINVAL;
+		return -1;
+	}
+
+	if (reply_bytes_len > UINT32_MAX ||
+	    data_in_len > UINT32_MAX ||
+	    data_out_len > UINT32_MAX) {
+		errno = EOVERFLOW;
 		return -1;
 	}
 
@@ -82,6 +118,10 @@ mpt_send_mpi(int fd,
 	 * The ioctl ABI encodes sizeof(struct mpt3_ioctl_command) (with mf[1]),
 	 * but the kernel will read beyond that based on data_sge_offset.
 	 */
+	if (mf_len > SIZE_MAX - sizeof(*cmd) + 1) {
+		errno = EOVERFLOW;
+		return -1;
+	}
 	cmd_len = sizeof(*cmd) + mf_len - 1;
 	cmd = calloc(1, cmd_len);
 	if (!cmd)
@@ -100,8 +140,7 @@ mpt_send_mpi(int fd,
 	cmd->data_sge_offset = data_sge_offset_dwords;
 
 	if (req_bytes && req_bytes_len) {
-		size_t to_copy = req_bytes_len < mf_len ? req_bytes_len : mf_len;
-		memcpy(cmd->mf, req_bytes, to_copy);
+		memcpy(cmd->mf, req_bytes, req_bytes_len);
 	}
 
 	rc = ioctl(fd, MPT3COMMAND, cmd);
@@ -212,6 +251,10 @@ mpt_read_config_page(int fd, int unit,
 	if (hdr.PageLength == 0)
 		hdr.PageLength = 4;
 	len = (size_t)hdr.PageLength * 4;
+	if (len == 0 || len > MPT_MAX_CONFIG_PAGE_BYTES) {
+		errno = EIO;
+		return NULL;
+	}
 
 	buf = calloc(1, len);
 	if (!buf)
@@ -265,9 +308,16 @@ mpt_read_ext_config_page(int fd, int unit,
 		page_version, page_address, &hdr, &ext_len_le, out_ioc_status_le) < 0)
 		return NULL;
 
-	if (le16toh(ext_len_le) == 0)
-		ext_len_le = htole16(4);
-	len = (size_t)le16toh(ext_len_le) * 4;
+	uint16_t ext_len_dwords = le16toh(ext_len_le);
+	if (ext_len_dwords == 0) {
+		ext_len_dwords = 4;
+		ext_len_le = htole16(ext_len_dwords);
+	}
+	len = (size_t)ext_len_dwords * 4;
+	if (len == 0 || len > MPT_MAX_CONFIG_PAGE_BYTES) {
+		errno = EIO;
+		return NULL;
+	}
 
 	buf = calloc(1, len);
 	if (!buf)
@@ -332,22 +382,24 @@ mpt_get_ioc_facts(int fd, int unit)
 
 	/* Sanity: firmware returns MsgLength in dwords. */
 	size_t facts_len = (size_t)facts->MsgLength * 4;
-	if (facts_len > 4096 || facts_len < sizeof(MPI2_IOC_FACTS_REPLY)) {
-		/* Keep what we have; caller might still print basics. */
-		return facts;
+	if (facts_len > MPT_MAX_IOC_FACTS_BYTES || facts_len < sizeof(*facts)) {
+		free(facts);
+		errno = EIO;
+		return NULL;
 	}
 
 	/* If reply is bigger, re-issue with a larger buffer. */
 	if (facts_len > 256) {
 		MPI2_IOC_FACTS_REPLY *facts2 = calloc(1, facts_len);
 		if (!facts2) {
-			/* Return the smaller one rather than failing. */
-			return facts;
+			free(facts);
+			return NULL;
 		}
 		if (mpt_send_mpi(fd, unit, &req, sizeof(req), sge_off,
 			facts2, facts_len, NULL, 0, NULL, 0, 10) < 0) {
 			free(facts2);
-			return facts;
+			free(facts);
+			return NULL;
 		}
 		free(facts);
 		facts = facts2;

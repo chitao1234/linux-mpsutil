@@ -365,10 +365,17 @@ mpt_get_ioc_facts(int fd, int unit)
 	req.Function = MPI2_FUNCTION_IOC_FACTS;
 
 	/*
-	 * IOC Facts has no SGL; provide a safe offset past the request struct
-	 * so the kernel can build a zero-length SGE there.
+	 * IOC Facts has no SGL. The Linux passthrough ioctl will still build a
+	 * zero-length SGE at data_sge_offset when data_in_size/data_out_size
+	 * are both zero.
+	 *
+	 * Put that SGE after the standard 3-dword request header, with an extra
+	 * dword of padding. This matches what most requests do (SGEs start on a
+	 * 16-byte boundary) and avoids overwriting any request fields.
 	 */
 	sge_off = dwords_ceil(sizeof(req));
+	if (sge_off < 4)
+		sge_off = 4;
 
 	facts = calloc(1, 256);
 	if (!facts)
@@ -382,7 +389,9 @@ mpt_get_ioc_facts(int fd, int unit)
 
 	/* Sanity: firmware returns MsgLength in dwords. */
 	size_t facts_len = (size_t)facts->MsgLength * 4;
-	if (facts_len > MPT_MAX_IOC_FACTS_BYTES || facts_len < sizeof(*facts)) {
+	size_t facts_min_len = offsetof(MPI2_IOC_FACTS_REPLY, MinDevHandle) +
+	    sizeof(facts->MinDevHandle);
+	if (facts_len > MPT_MAX_IOC_FACTS_BYTES || facts_len < facts_min_len) {
 		free(facts);
 		errno = EIO;
 		return NULL;
@@ -407,4 +416,3 @@ mpt_get_ioc_facts(int fd, int unit)
 
 	return facts;
 }
-

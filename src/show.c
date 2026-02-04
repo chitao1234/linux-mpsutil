@@ -17,6 +17,13 @@ dev_prefix(void)
 	return g_ctx.is_mpt2 ? "mpt2ctl" : "mpt3ctl";
 }
 
+static void
+print_rev_u32(const char *label, uint32_t v)
+{
+	printf("%s %u.%02u.%02u.%02u\n", label,
+	    (v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
+}
+
 static const char *
 get_device_type(uint32_t di)
 {
@@ -170,6 +177,12 @@ show_adapter(int fd, int unit)
 {
 	int rc = 0;
 	size_t len = 0;
+	struct mpt3_ioctl_iocinfo info;
+	int have_iocinfo = 0;
+
+	memset(&info, 0, sizeof(info));
+	if (mpt_ioctl_iocinfo(fd, unit, &info) == 0)
+		have_iocinfo = 1;
 
 	MPI2_CONFIG_PAGE_MAN_0 *man0 = mpt_read_config_page(fd, unit,
 	    MPI2_CONFIG_PAGETYPE_MANUFACTURING, 0, 0, &len, NULL);
@@ -186,24 +199,34 @@ show_adapter(int fd, int unit)
 	printf("    Chip Revision: %.16s\n", man0->ChipRevision);
 	free(man0);
 
+	int printed_bios = 0;
 	MPI2_CONFIG_PAGE_BIOS_3 *bios3 = mpt_read_config_page(fd, unit,
 	    MPI2_CONFIG_PAGETYPE_BIOS, 3, 0, &len, NULL);
-	if (bios3 && len >= sizeof(*bios3)) {
+	if (bios3 && len >= offsetof(MPI2_CONFIG_PAGE_BIOS_3, BiosVersion) +
+	    sizeof(bios3->BiosVersion)) {
 		uint32_t v = le32toh(bios3->BiosVersion);
-		printf("    BIOS Revision: %u.%02u.%02u.%02u\n",
-		    (v >> 24) & 0xff, (v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff);
+		print_rev_u32("    BIOS Revision:", v);
+		printed_bios = 1;
 	}
 	free(bios3);
+
+	if (!printed_bios && have_iocinfo && info.bios_version != 0) {
+		print_rev_u32("    BIOS Revision:", le32toh(info.bios_version));
+		printed_bios = 1;
+	}
+	if (!printed_bios)
+		printf("    BIOS Revision: (unavailable)\n");
 
 	MPI2_IOC_FACTS_REPLY *facts = mpt_get_ioc_facts(fd, unit);
 	if (facts) {
 		uint32_t fw = le32toh(facts->FWVersion.Word);
 		uint32_t caps = le32toh(facts->IOCCapabilities);
-		printf("Firmware Revision: %u.%02u.%02u.%02u\n",
-		    (fw >> 24) & 0xff, (fw >> 16) & 0xff, (fw >> 8) & 0xff, fw & 0xff);
+		print_rev_u32("Firmware Revision:", fw);
 		printf("  Integrated RAID: %s\n",
 		    (caps & MPI2_IOCFACTS_CAPABILITY_INTEGRATED_RAID) ? "yes" : "no");
 		free(facts);
+	} else if (have_iocinfo && info.firmware_version != 0) {
+		print_rev_u32("Firmware Revision:", le32toh(info.firmware_version));
 	} else {
 		printf("Firmware Revision: (unavailable)\n");
 	}
@@ -271,11 +294,14 @@ show_adapter(int fd, int unit)
 		    offsetof(MPI2_CONFIG_PAGE_SASIOUNIT_1, PhyData));
 
 		for (uint8_t i = 0; i < num_phys; i++) {
-			const char *disabled = (phy0[i].PhyFlags & MPI2_SASIOUNIT0_PHYFLAGS_PHY_DISABLED) ? "Y" : "N";
-			const char *speed = (le16toh(phy0[i].AttachedDevHandle) != 0) ? get_device_speed(phy0[i].NegotiatedLinkRate) : "     ";
+			const char *disabled = (phy0[i].PhyFlags &
+			    MPI2_SASIOUNIT0_PHYFLAGS_PHY_DISABLED) ? "Y" : "N";
+			const char *speed = "     ";
 			const char *min = get_device_speed(phy1[i].MaxMinLinkRate);
 			const char *max = get_device_speed(phy1[i].MaxMinLinkRate >> 4);
 			const char *dtype = get_device_type(le32toh(phy0[i].ControllerPhyDeviceInfo));
+			char ctrlhandle[8];
+			char devhandle[8];
 
 			if (phy0[i].PortFlags & MPI2_SASIOUNIT0_PORTFLAGS_DISCOVERY_IN_PROGRESS) {
 				printf("%-8uDiscovery still in progress\n", i);
@@ -283,17 +309,20 @@ show_adapter(int fd, int unit)
 			}
 
 			if (le16toh(phy0[i].AttachedDevHandle) != 0) {
-				printf("%-8u%04x        %04x       %-10s%-8s%-7s%-7s%s\n",
-				    i,
-				    le16toh(phy0[i].ControllerDevHandle),
-				    le16toh(phy0[i].AttachedDevHandle),
-				    disabled, speed, min, max, dtype);
+				snprintf(devhandle, sizeof(devhandle), "%04x",
+				    le16toh(phy0[i].AttachedDevHandle));
+				snprintf(ctrlhandle, sizeof(ctrlhandle), "%04x",
+				    le16toh(phy0[i].ControllerDevHandle));
+				speed = get_device_speed(phy0[i].NegotiatedLinkRate);
 			} else {
-				printf("%-8u%04x        %-11s%-10s%-8s%-7s%-7s%s\n",
-				    i,
-				    le16toh(phy0[i].ControllerDevHandle),
-				    "    ", disabled, speed, min, max, dtype);
+				snprintf(devhandle, sizeof(devhandle), "    ");
+				snprintf(ctrlhandle, sizeof(ctrlhandle), "    ");
+				speed = "     ";
 			}
+
+			printf("%-8u%-12s%-11s%-10s%-8s%-7s%-7s%s\n",
+			    i, ctrlhandle, devhandle, disabled,
+			    speed, min, max, dtype);
 		}
 	}
 	free(sas0);
